@@ -11,3 +11,4 @@ export default {
 	'sec-ch-ua-mobile': '?0',
 	'sec-ch-ua-platform': 'Windows'
 }
+

@@ -1,96 +1,28 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
+import { Command } from 'commander';
 const parser = new Command();
-import axios from 'axios'
-import defaultRequestHeaders from "./requests/defaultRequestHeaders.js";
-import directoryRequest from "./requests/directoryRequest.js";
-import unitRequest from "./requests/unitRequest.js";
-import jstring from "./utils/jstring.js"
-import fs from 'node:fs'
-import path from 'path'
-import touch from 'touch'
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const sensitive = path.join(__dirname, '../sensitive')
+import scrape from './commands/scrape.js';
 
 parser.
 	name('ldsh')
-	.description('Hacking the church directory system for the greater good of all non-clerks everywhere')
+	.description('Tools for extracting your ward/stake directory into a usable dataset')
 	.version('0.0.1')
 
-parser.command('directory')
+parser.command('scrape')
 	.description('Exports the directory available to the user')
-	.action(async () => {
-		for (let i = 180529; i >= 0; i--) {
-			await gatherUnitInfo(i)
-		}
-	})
+	.arguments('unitsFile', '' +
+		'Path to a text file containing the unit numbers you would like info for. ' +
+		'One unit number on each line.')
+	.arguments('headersFile', '' +
+		'Path to a file containing request headers. ' +
+		'You can get these request headers from the chrome network tab. ' +
+		'Headers file should at a minimum contain \'Cookie: <cookies>\' as its own line. ' +
+		'This is to authenticate your requests to the church directory APIs.' +
+		'If you don\'t know how to get these request headers and don\'t know what any of this means...' +
+		'don\'t use this tool.')
+	.action(scrape)
 
-async function gatherUnitInfo(unitNumber) {
-	const unit = await scrapeUnitInfo(unitNumber)
-	if (!unit) {
-		return
-	}
 
-	const name = unit.name
-		.split(' ')
-		.filter(piece => !!piece)
-		.map(s => s.toLowerCase())
-		.join('-')
-
-	const fileNamePrefix = `unit-${unitNumber}-${name}`
-
-	write(`${sensitive}/out/${fileNamePrefix}.meta.json`, unit)
-
-	const directory = await scrapeDirectoryInfo(unitNumber)
-	if (directory) {
-		write(`${sensitive}/out/${fileNamePrefix}.directory.json`, directory)
-	}
-}
-
-async function makeRequest(unitNumber, url, req) {
-	console.log(req.method, url, '...')
-	const response = await axios.request(url, {
-		method: req.method,
-		validateStatus: () => true,
-		headers: {
-			...defaultRequestHeaders,
-			...req.headers,
-			Cookie: req.cookie
-		}
-	})
-
-	if (response.status === 200) {
-		return response.data
-	}
-
-	console.error({
-		message: `Error request info for unit ${unitNumber}`,
-		unitNum: unitNumber,
-		status: response.status,
-		responseBody: response.data
-	})
-}
-
-async function scrapeUnitInfo(unitNumber) {
-	return await makeRequest(unitNumber, `${unitRequest.url}${unitNumber}`, unitRequest)
-}
-
-async function scrapeDirectoryInfo(unitNumber) {
-	return await makeRequest(unitNumber, `${directoryRequest.url}?unit=${unitNumber}`, directoryRequest)
-}
-
-function write(file, data) {
-	const absPath = path.resolve(file)
-	if (!fs.existsSync(absPath)) {
-		console.log('creating file')
-		touch.sync(absPath)
-	}
-
-	fs.writeFileSync(absPath, jstring(data))
-}
 
 parser.parse()

@@ -3,6 +3,5 @@ export default {
 	method: 'GET',
 	headers: {
 		Accept: '*/*',
-	},
-	cookie: ''
+	}
 }
