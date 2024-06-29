@@ -2,19 +2,20 @@
 
 import { Command } from 'commander';
 const parser = new Command();
-import scrape from './commands/scrape.js';
+import scrape from './commands/scrape/index.js';
+import transform from './commands/transform/index.js'
 
 parser.
 	name('ldsh')
 	.description('Tools for extracting your ward/stake directory into a usable dataset')
 	.version('0.0.1')
 
-parser.command('scrape')
+parser.command('index')
 	.description('Exports the directory available to the user')
-	.arguments('unitsFile', '' +
+	.argument('unitsFile', '' +
 		'Path to a text file containing the unit numbers you would like info for. ' +
 		'One unit number on each line.')
-	.arguments('headersFile', '' +
+	.argument('headersFile', '' +
 		'Path to a file containing request headers. ' +
 		'You can get these request headers from the chrome network tab. ' +
 		'Headers file should at a minimum contain \'Cookie: <cookies>\' as its own line. ' +
@@ -23,6 +24,15 @@ parser.command('scrape')
 		'don\'t use this tool.')
 	.action(scrape)
 
+
+parser.command('transform')
+	.description('Transforms exported directory info into a different data format')
+	.argument('unitsFile', '')
+	.argument('keysFile', '' +
+		'Path to a text file containing the keys to the values you\'d like to extract from the directory JSON.' +
+		'Each line should be a dot notation path to the desired value.' +
+		'ex. "members.surname" will pull the last name of each member.')
+	.action(transform)
 
 
 parser.parse()

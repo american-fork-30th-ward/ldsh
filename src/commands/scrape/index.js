@@ -4,27 +4,18 @@ import axios from 'axios'
 import defaultRequestHeaders from "./requests/defaultRequestHeaders.js";
 import directoryRequest from "./requests/directoryRequest.js";
 import unitRequest from "./requests/unitRequest.js";
-import jstring from "../utils/jstring.js"
-import fs from 'node:fs'
 import path from 'path'
-import touch from 'touch'
 import { fileURLToPath } from 'url';
+import {read, write} from '../../utils/io.js'
+import createState from "../../utils/createState.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const sensitive = path.join(__dirname, '../../sensitive')
 
-// state hook so I don't have to pass stuff down a bunch of times.
-function state() {
-    return (() => {
-        let state
-        return [() => state, v => {state = v}]
-    })()
-}
-
 // Why yes, I AM a terrible person. Thank you for noticing!
-const [f, setF] = state()
-const [getC, setC] = state()
+const [f, setF] = createState()
+const [getC, setC] = createState()
 const B = Boolean
 export default async function scrape(uf, hf) {
     setF(read(hf).filter(B))
@@ -49,7 +40,7 @@ async function scrapeUnitInformation(unitNumber) {
 
     write(`${sensitive}/out/unit-${unitNumber}-${unitName}.meta.json`, unit)
 
-    const directory = await scrapDirectory(unitNumber)
+    const directory = await scrapeDirectory(unitNumber)
     if (directory) {
         write(`${sensitive}/out/unit-${unitNumber}-${unitName}.directory.json`, directory)
     }
@@ -61,7 +52,7 @@ const scrapeMetadata = async unitNumber => await makeRequest(
     unitRequest
 )
 
-const scrapDirectory = async unitNumber => await makeRequest(
+const scrapeDirectory = async unitNumber => await makeRequest(
     unitNumber,
     `${directoryRequest.url}?unit=${unitNumber}`,
     directoryRequest
@@ -89,25 +80,4 @@ async function makeRequest(unitNumber, url, req) {
         status: response.status,
         responseBody: response.data
     })
-}
-
-function write(file, data) {
-    const absPath = path.resolve(file)
-    if (!fs.existsSync(absPath)) {
-        fs.mkdirSync(path.dirname(absPath), {recursive: true})
-        touch.sync(absPath, {force: true})
-    }
-
-    fs.writeFileSync(absPath, jstring(data))
-}
-
-function read(file) {
-    const filePath = path.resolve(file);
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`Invalid path: ${filePath} does not exist`);
-    }
-
-    return fs.readFileSync(filePath)
-        .toString()
-        .split('\n')
 }
