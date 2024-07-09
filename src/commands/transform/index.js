@@ -5,10 +5,9 @@ import paths from "../../utils/paths.js";
 import createState from "../../utils/createState.js";
 import jparse from "../../utils/jparse.js";
 import _ from "lodash";
-import jstring from "../../utils/jstring.js";
 
 const [getUnitDirectories, setUnitDirectories] = createState()
-const [getUnitMetas, setUnitMetas] = createState()
+const [subscribers, setSubscribers] = createState()
 
 const columnNames = [
   'Name',
@@ -98,14 +97,28 @@ const columnNames = [
 // }
 
 export default function transform(unitsFile, _) {
-  const {metas, directories} = loadUnitFiles()
-  setUnitMetas(metas)
-  setUnitDirectories(directories)
+  setSubscribers(buildSubscriberList())
+  setUnitDirectories(listDirectoryFiles())
+  read(unitsFile).filter(Boolean).map(parseInt).forEach(toCSV)
+}
 
-  read(unitsFile)
-    .filter(Boolean)
-    .map(parseInt)
-    .forEach(toCSV)
+function buildSubscriberList() {
+  const members = jparse(read(path.join(paths.sensitiveDir, 'config', 'subscribers.json')))['members']
+  return members.reduce((subs, member) => {
+    const name = _.get(member, 'name')
+    if (!name) {
+      return subs
+    }
+
+    return {
+      ...subs,
+      [name]: (
+        !!_.get(member, 'emailAddress')
+        && !!_.get(member, 'validAddress')
+        && !_.get(member, 'unsubscribedFromEmail')
+      )
+    }
+  }, {})
 }
 
 function toCSV(unitNumber) {
@@ -121,7 +134,6 @@ function toCSV(unitNumber) {
 
   rows.unshift(columnNames)
   const csvData = rows.map(row => row.join(',')).join('\n')
-  console.log(csvData)
 
   const fileName = path.basename(unitFile).split('.')[0]
   const contactsCSVFile = path.join(path.dirname(unitFile), `${fileName}.csv`)
@@ -138,12 +150,8 @@ function getUnitFilePath(unitNumber) {
 }
 
 
-function loadUnitFiles() {
-  const files = fs.readdirSync(paths.dataFolder)
-  return {
-    directories: files.filter(filePath => filePath.endsWith('.directory.json')),
-    metas: files.filter(filePath => filePath.endsWith('.meta.json'))
-  }
+function listDirectoryFiles() {
+  return fs.readdirSync(paths.dataFolder).filter(filePath => filePath.endsWith('.directory.json'))
 }
 
 function toRow(entry) {
@@ -173,7 +181,7 @@ function parseMember(member, household) {
 
 function getLocation(household) {
   return {
-    'Location': _.get(household, "address", '').replace('\n', ' ')
+    'Location': _.get(household, "address", '').replaceAll('\n', ' ').replaceAll(',', ' '),
   }
 }
 
@@ -189,6 +197,11 @@ function getNames(member) {
 }
 
 function getEmail(member) {
+  // Filters out folks who are unsubscribed
+  if (!subscribers()[_.get(member, 'name')]) {
+    return {}
+  }
+
   return _.has(member, 'email') ? {
     'E-mail 1 - Type': 'Other',
     'E-mail 1 - Value': _.get(member, "email.email", '')
@@ -196,6 +209,11 @@ function getEmail(member) {
 }
 
 function getPhone(member) {
+  // Filters out folks who are unsubscribed
+  if (!subscribers()[_.get(member, 'name')]) {
+    return {}
+  }
+
   return _.has(member, 'phone') ? {
     'Phone 1 - Type': 'Other',
     'Phone 1 - Value': _.get(member, "phone.number", '')
@@ -209,7 +227,34 @@ function getMemberInitials(member) {
 function getBirthday(member) {
   // I think I can only see birthdays and stuff in my household, but this could be useful for a
   // bishop using this tool I guess..
-  return {'Birthday': _.get(member, 'birthDate', '')}
+  return {
+    'Birthday': _.get(member, 'birthDate', '').replaceAll('\n', ' ').replaceAll(',', ' ')
+  }
+}
+
+function isMaleCalling(calling) {
+  const name = _.get(calling, 'positionTypeName', '').toLowerCase()
+  return (
+    name.includes('elders')
+    || name.includes('priests')
+    || name.includes('teachers')
+    || name.includes('deacons')
+    || name.includes('quorum')
+    || name.includes('stake high councilor')
+    || name.includes('aaronic')
+    || name.includes('melchizedek')
+    || name.includes('bishop')
+    || name.includes('clerk')
+  )
+}
+
+function isFemaleCalling(calling) {
+  const name = _.get(calling, 'positionTypeName', '').toLowerCase()
+  return (
+    name.includes('woman')
+    || name.includes('women')
+    || name.includes('relief society')
+  )
 }
 
 function getGender(member, household) {
@@ -228,8 +273,17 @@ function getGender(member, household) {
     return {'Gender': 'male'}
   }
 
+  const callings = _.get(member, 'positions', [])
+  if (callings.length) {
+    if (callings.some(calling => isFemaleCalling(calling))) {
+      return {'Gender': 'female'}
+    } else if (callings.some(calling => isMaleCalling(calling))) {
+      return {'Gender': 'male'}
+    }
+  }
+
   const headsOfHousehold = (() => {
-    const raw = _.get(household, "names", '')
+    const raw = _.get(household, "name", '')
     if (!raw) {
       return []
     }
@@ -247,13 +301,13 @@ function getGender(member, household) {
 function getCallings(member) {
   const pos = _.get(member, 'positions', [])
   return {
-    'Occupation': pos.reduce((acc, cur) => [...acc, _.get(cur, 'positionTypeName', '')], []).filter(Boolean).join(', ')
+    'Occupation': pos.reduce((acc, cur) => [...acc, _.get(cur, 'positionTypeName', '')], []).filter(Boolean).join('; ')
   }
 }
 
 function getNotes(member) {
   const notes = []
-  return {'Notes': notes.join('\n\n')}
+  return {'Notes': notes.join('; ')}
 }
 
 function getPhoto(member) {
